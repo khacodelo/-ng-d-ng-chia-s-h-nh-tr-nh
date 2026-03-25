@@ -12,13 +12,10 @@ import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
-import com.google.android.gms.location.FusedLocationProviderClient
-
 
 class MapActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private lateinit var mMap: GoogleMap
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,8 +25,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
             .findFragmentById(R.id.map) as SupportMapFragment
 
         mapFragment.getMapAsync(this)
-
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
@@ -39,6 +34,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun getCurrentLocation() {
+        // 🔐 check permission
         if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
@@ -47,18 +43,41 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                1
+                100
             )
             return
         }
+
+        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         fusedLocationClient.lastLocation.addOnSuccessListener { location ->
             if (location != null) {
                 val latLng = LatLng(location.latitude, location.longitude)
 
-                mMap.addMarker(MarkerOptions().position(latLng).title("Vị trí của bạn"))
-                mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f))
+                // 👉 hiển thị marker
+                mMap.clear()
+                mMap.addMarker(
+                    MarkerOptions().position(latLng).title("Bạn đang ở đây")
+                )
+
+                // 👉 zoom tới vị trí
+                mMap.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(latLng, 17f)
+                )
             }
+        }
+    }
+
+    // 🔁 Khi user bấm cho phép quyền → chạy lại
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        if (requestCode == 100 && grantResults.isNotEmpty()
+            && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+            getCurrentLocation()
         }
     }
 }
