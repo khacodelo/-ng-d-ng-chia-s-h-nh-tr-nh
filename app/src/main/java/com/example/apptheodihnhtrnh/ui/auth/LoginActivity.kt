@@ -42,6 +42,18 @@ class LoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // --- BƯỚC 1: KIỂM TRA ĐĂNG NHẬP TỰ ĐỘNG ---
+        val sharedPref = getSharedPreferences("APP_DATA", Context.MODE_PRIVATE)
+        val savedToken = sharedPref.getString("TOKEN", null)
+        
+        if (savedToken != null) {
+            // Nếu đã có token, nhảy thẳng vào MapActivity
+            startActivity(Intent(this, MapActivity::class.java))
+            finish() // Đóng LoginActivity để không quay lại được bằng nút Back
+            return
+        }
+
         setContentView(R.layout.activity_login)
 
         val emailEdit = findViewById<EditText>(R.id.edtEmail)
@@ -71,8 +83,7 @@ class LoginActivity : AppCompatActivity() {
                     if (response.isSuccessful) {
                         val body = response.body()
                         if (body?.token != null) {
-                            // LƯU TOKEN (Quan trọng cho các Module sau)
-                            val sharedPref = getSharedPreferences("APP_DATA", Context.MODE_PRIVATE)
+                            // LƯU TOKEN
                             sharedPref.edit().putString("TOKEN", body.token).apply()
 
                             Toast.makeText(this@LoginActivity, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show()
@@ -82,23 +93,18 @@ class LoginActivity : AppCompatActivity() {
                             Toast.makeText(this@LoginActivity, "Lỗi: Server không trả về Token", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        // Đọc lỗi chi tiết từ Server
                         val errorBody = response.errorBody()?.string()
-                        Log.e("LOGIN_ERROR", "Error body: $errorBody")
-                        
                         val errorMessage = try {
                             val errorResponse = Gson().fromJson(errorBody, LoginResponse::class.java)
                             errorResponse.message ?: "Sai email hoặc mật khẩu"
                         } catch (e: Exception) {
                             "Lỗi hệ thống: ${response.code()}"
                         }
-                        
                         Toast.makeText(this@LoginActivity, "Đăng nhập thất bại: $errorMessage", Toast.LENGTH_LONG).show()
                     }
                 }
 
                 override fun onFailure(call: Call<LoginResponse>, t: Throwable) {
-                    Log.e("LOGIN_FAILURE", t.message ?: "Unknown error")
                     Toast.makeText(this@LoginActivity, "Lỗi kết nối Server: ${t.localizedMessage}", Toast.LENGTH_LONG).show()
                 }
             })

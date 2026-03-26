@@ -1,7 +1,6 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-
 const connectDB = require("./config/db");
 
 const app = express();
@@ -14,6 +13,7 @@ connectDB();
 
 // routes
 app.use("/auth", require("./routes/auth"));
+app.use("/journey", require("./routes/journey")); // Đăng ký Module 6
 
 const PORT = process.env.PORT || 3000;
 
