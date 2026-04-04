@@ -3,18 +3,16 @@ const router = express.Router();
 const Journey = require("../models/Journey");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
-const path = require("path");
+const cloudinary = require("cloudinary").v2;
+const streamifier = require("streamifier");
 
-// Cấu hình lưu trữ ảnh cục bộ (Module 8 sẽ dùng Cloudinary)
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, "uploads/");
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname));
-    }
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
 });
-const upload = multer({ storage: storage });
+
+const upload = multer();
 
 const auth = (req, res, next) => {
     const token = req.header("x-auth-token");
@@ -28,11 +26,28 @@ const auth = (req, res, next) => {
     }
 };
 
-// API Upload ảnh riêng lẻ
-router.post("/upload", upload.single("image"), (req, res) => {
+// API: Lấy tất cả hành trình (Feed mạng xã hội)
+router.get("/all", async (req, res) => {
+    try {
+        const journeys = await Journey.find()
+            .populate("userId", "email") // Lấy thêm email người tạo
+            .sort({ startTime: -1 }); // Mới nhất lên đầu
+        res.json(journeys);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.post("/upload", upload.single("image"), async (req, res) => {
     if (!req.file) return res.status(400).send("No file uploaded.");
-    const imageUrl = `http://${req.hostname}:3000/uploads/${req.file.filename}`;
-    res.json({ imageUrl });
+    const stream = cloudinary.uploader.upload_stream(
+        { folder: "journeys" },
+        (error, result) => {
+            if (result) res.json({ imageUrl: result.secure_url });
+            else res.status(500).json({ message: error.message });
+        }
+    );
+    streamifier.createReadStream(req.file.buffer).pipe(stream);
 });
 
 router.post("/save", auth, async (req, res) => {

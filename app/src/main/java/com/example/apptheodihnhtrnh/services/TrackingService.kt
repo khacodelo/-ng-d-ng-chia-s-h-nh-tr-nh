@@ -3,6 +3,7 @@ package com.example.apptheodihnhtrnh.services
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
@@ -20,6 +21,7 @@ class TrackingService : Service() {
         const val CHANNEL_ID = "tracking_channel"
         const val NOTIFICATION_ID = 1
         var isServiceRunning = false
+        val pathPoints = mutableListOf<LatLng>() // Nguồn dữ liệu duy nhất
     }
 
     override fun onCreate() {
@@ -31,7 +33,15 @@ class TrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!isServiceRunning) {
             isServiceRunning = true
-            startForeground(NOTIFICATION_ID, createNotification("Đang theo dõi hành trình của bạn..."))
+            pathPoints.clear()
+            
+            val notification = createNotification("Đang theo dõi hành trình của bạn...")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            
             startLocationUpdates()
         }
         return START_STICKY
@@ -45,17 +55,22 @@ class TrackingService : Service() {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val location = result.lastLocation ?: return
-                // Gửi tọa độ về Activity thông qua Broadcast hoặc LiveData
+                val newPoint = LatLng(location.latitude, location.longitude)
+                
+                synchronized(pathPoints) {
+                    pathPoints.add(newPoint)
+                }
+
+                // Gửi thông báo đích danh cho app
                 val intent = Intent("TRACKING_UPDATE")
-                intent.putExtra("lat", location.latitude)
-                intent.putExtra("lng", location.longitude)
+                intent.setPackage(packageName) 
                 sendBroadcast(intent)
             }
         }
 
         try {
             fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
-        } catch (unlikely: SecurityException) {
+        } catch (e: SecurityException) {
             isServiceRunning = false
         }
     }
@@ -64,8 +79,9 @@ class TrackingService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("App Theo Dõi Hành Trình")
             .setContentText(content)
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // Đảm bảo icon này tồn tại
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
