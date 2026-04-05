@@ -21,6 +21,7 @@ data class PointData(val lat: Double, val lng: Double)
 data class JourneyData(
     val userId: UserInfo?,
     val startTime: Date?,
+    val endTime: Date?, // Thêm endTime
     val distance: Float?,
     val points: List<PointData>?,
     val checkpoints: List<CheckpointInfo>?
@@ -45,7 +46,18 @@ class JourneyAdapter(private val journeys: List<JourneyData>) : RecyclerView.Ada
         
         holder.tvUser.text = journey.userId?.email ?: "Ẩn danh"
         val sdf = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
-        holder.tvInfo.text = "${if (journey.startTime != null) sdf.format(journey.startTime) else ""} - %.2f km".format((journey.distance ?: 0f) / 1000)
+        
+        // Tính toán thời gian di chuyển
+        var durationText = ""
+        if (journey.startTime != null && journey.endTime != null) {
+            val diff = journey.endTime.time - journey.startTime.time
+            val hours = diff / (1000 * 60 * 60)
+            val minutes = (diff / (1000 * 60)) % 60
+            val seconds = (diff / 1000) % 60
+            durationText = " | %02d:%02d:%02d".format(hours, minutes, seconds)
+        }
+
+        holder.tvInfo.text = "${if (journey.startTime != null) sdf.format(journey.startTime) else ""} - %.2f km %s".format((journey.distance ?: 0f) / 1000, durationText)
         
         val notes = journey.checkpoints?.filter { !it.note.isNullOrEmpty() }?.joinToString("; ") { it.note!! }
         holder.tvNotes.text = if (!notes.isNullOrEmpty()) "Ghi chú: $notes" else ""
@@ -63,10 +75,8 @@ class JourneyAdapter(private val journeys: List<JourneyData>) : RecyclerView.Ada
             }
         }
 
-        // Sự kiện: Nhấn vào để xem bản đồ lịch sử
         holder.itemView.setOnClickListener {
             val intent = Intent(holder.itemView.context, HistoryMapActivity::class.java)
-            // Chuyển dữ liệu points và checkpoints sang dạng JSON để truyền đi
             intent.putExtra("POINTS_JSON", Gson().toJson(journey.points))
             intent.putExtra("CHECKPOINTS_JSON", Gson().toJson(journey.checkpoints))
             holder.itemView.context.startActivity(intent)
