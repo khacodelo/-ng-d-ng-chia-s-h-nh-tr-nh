@@ -27,7 +27,7 @@ data class RegisterResponse(
 
 // --- API SERVICE ---
 interface RegisterApiService {
-    @POST("auth/register") // Đã sửa: bỏ 'api/' để khớp với server.js
+    @POST("auth/register")
     fun register(@Body request: RegisterRequest): Call<RegisterResponse>
 }
 
@@ -42,7 +42,7 @@ class RegisterActivity : AppCompatActivity() {
         val btnRegister = findViewById<Button>(R.id.btnRegister)
 
         val retrofit = Retrofit.Builder()
-            .baseUrl("http://10.0.2.2:3000/") // Đã sửa: 5000 -> 3000 để khớp với server.js
+            .baseUrl("http://192.168.1.155:3000/") 
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 

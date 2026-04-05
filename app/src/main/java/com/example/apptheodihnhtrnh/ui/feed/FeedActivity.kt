@@ -36,14 +36,13 @@ class FeedActivity : AppCompatActivity() {
     }
 
     private fun loadJourneys() {
-        // Cấu hình Gson chấp nhận nhiều định dạng ngày tháng từ Server
         val gson = GsonBuilder()
             .setLenient()
             .setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
             .create()
 
         val retrofit = Retrofit.Builder()
-            .baseUrl("http://10.0.2.2:3000/")
+            .baseUrl("http://192.168.1.155:3000/")
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
 
@@ -58,13 +57,11 @@ class FeedActivity : AppCompatActivity() {
                     adapter = JourneyAdapter(journeys)
                     rvFeed.adapter = adapter
                 } else {
-                    Log.e("FEED_ERROR", "Code: ${response.code()} - ${response.errorBody()?.string()}")
                     Toast.makeText(this@FeedActivity, "Lỗi server: ${response.code()}", Toast.LENGTH_SHORT).show()
                 }
             }
 
             override fun onFailure(call: Call<List<JourneyData>>, t: Throwable) {
-                Log.e("FEED_FAILURE", "Error: ${t.message}")
                 Toast.makeText(this@FeedActivity, "Lỗi kết nối: ${t.localizedMessage}", Toast.LENGTH_LONG).show()
             }
         })

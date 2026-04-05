@@ -62,7 +62,7 @@ class LoginActivity : AppCompatActivity() {
         val tvGoToRegister = findViewById<TextView>(R.id.tvGoToRegister)
 
         val retrofit = Retrofit.Builder()
-            .baseUrl("http://10.0.2.2:3000/")
+            .baseUrl("http://192.168.1.155:3000/")
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 

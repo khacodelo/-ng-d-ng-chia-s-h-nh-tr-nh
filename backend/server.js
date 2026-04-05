@@ -28,6 +28,7 @@ app.use("/journey", require("./routes/journey"));
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+// QUAN TRỌNG: Sửa listen thành "0.0.0.0" để cho phép máy thật kết nối
+app.listen(PORT, "0.0.0.0", () => {
     console.log("Server running on port " + PORT);
 });

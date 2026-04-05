@@ -99,8 +99,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private val trackingReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            // FIX TRIỆT ĐỂ: Nhận tín hiệu và vẽ lại toàn bộ mỗi khi có điểm mới
-            redrawFullRoute()
+            redrawTrackingPath()
         }
     }
 
@@ -167,14 +166,12 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         fabCheckpoint.visibility = if (isRunning) View.VISIBLE else View.GONE
     }
 
-    // FIX TRIỆT ĐỂ: Hàm xóa và vẽ lại toàn bộ Polyline từ nguồn dữ liệu Service
-    private fun redrawFullRoute() {
+    private fun redrawTrackingPath() {
         if (!::mMap.isInitialized) return
         
         val points = TrackingService.pathPoints.toList()
         if (points.isEmpty()) return
 
-        // 1. Xóa Polyline cũ để tránh bị lỗi đè hoặc mất nét
         polyline?.remove()
         polyline = mMap.addPolyline(PolylineOptions()
             .addAll(points)
@@ -182,11 +179,13 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
             .width(12f)
             .geodesic(true))
 
-        // 2. Cập nhật vị trí Marker người dùng
         val currentPos = points.last()
         lastLatLng = currentPos
         if (currentMarker == null) {
-            currentMarker = mMap.addMarker(MarkerOptions().position(currentPos).title("Bạn ở đây").icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)))
+            currentMarker = mMap.addMarker(MarkerOptions()
+                .position(currentPos)
+                .title("Bạn ở đây")
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)))
         } else {
             currentMarker?.position = currentPos
         }
@@ -237,7 +236,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         cursor?.close()
         if (path.isEmpty()) return
         val body = MultipartBody.Part.createFormData("image", File(path).name, File(path).asRequestBody("image/*".toMediaTypeOrNull()))
-        val retrofit = Retrofit.Builder().baseUrl("http://10.0.2.2:3000/").addConverterFactory(GsonConverterFactory.create()).build()
+        val retrofit = Retrofit.Builder().baseUrl("http://192.168.1.155:3000/").addConverterFactory(GsonConverterFactory.create()).build()
         retrofit.create(JourneyApiService::class.java).uploadImage(body).enqueue(object : Callback<UploadResponse> {
             override fun onResponse(call: Call<UploadResponse>, response: Response<UploadResponse>) {
                 if (response.isSuccessful) { tempImageUrl = response.body()?.imageUrl ?: ""; Toast.makeText(this@MapActivity, "Đã tải ảnh!", Toast.LENGTH_SHORT).show() }
@@ -252,7 +251,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         if (token.isEmpty() || points.isEmpty()) return
         val req = JourneyRequest(Date(), Date(), totalDistance, points, checkpointList)
         val gson = GsonBuilder().setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").create()
-        val retrofit = Retrofit.Builder().baseUrl("http://10.0.2.2:3000/").addConverterFactory(GsonConverterFactory.create(gson)).build()
+        val retrofit = Retrofit.Builder().baseUrl("http://192.168.1.155:3000/").addConverterFactory(GsonConverterFactory.create(gson)).build()
         retrofit.create(JourneyApiService::class.java).saveJourney(token, req).enqueue(object : Callback<Void> {
             override fun onResponse(c: Call<Void>, r: Response<Void>) { if (r.isSuccessful) Toast.makeText(this@MapActivity, "Hành trình đã lưu!", Toast.LENGTH_SHORT).show() }
             override fun onFailure(c: Call<Void>, t: Throwable) {}
@@ -284,9 +283,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         if (!::mMap.isInitialized) return
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             mMap.isMyLocationEnabled = true
-            // Khôi phục vẽ đường ngay khi bản đồ sẵn sàng
-            if (TrackingService.isServiceRunning) redrawFullRoute()
-            
+            if (TrackingService.isServiceRunning) redrawTrackingPath()
             fusedLocationClient.lastLocation.addOnSuccessListener { loc -> 
                 if (loc != null) mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 15f))
             }
@@ -298,9 +295,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         val filter = IntentFilter("TRACKING_UPDATE")
         val flag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) ContextCompat.RECEIVER_NOT_EXPORTED else 0
         ContextCompat.registerReceiver(this, trackingReceiver, filter, flag)
-        
-        // QUAN TRỌNG: Vẽ lại hành trình ngay khi quay lại bản đồ
-        if (TrackingService.isServiceRunning) redrawFullRoute()
+        if (TrackingService.isServiceRunning) redrawTrackingPath()
     }
 
     override fun onPause() {

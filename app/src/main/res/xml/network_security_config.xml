@@ -3,5 +3,7 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">localhost</domain>
+        <!-- THÊM IP MÁY THẬT TẠI ĐÂY -->
+        <domain includeSubdomains="true">192.168.1.155</domain>
     </domain-config>
 </network-security-config>
