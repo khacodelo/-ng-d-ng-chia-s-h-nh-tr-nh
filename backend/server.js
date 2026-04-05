@@ -28,6 +28,7 @@ app.use("/journey", require("./routes/journey"));
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-    console.log("Server running on port " + PORT);
+// Sửa lại để lắng nghe trên 0.0.0.0 giúp các thiết bị khác dễ dàng kết nối
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
 });
