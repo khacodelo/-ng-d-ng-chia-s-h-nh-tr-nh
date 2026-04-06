@@ -7,12 +7,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.apptheodihnhtrnh.R
-import com.google.gson.GsonBuilder
+import com.example.apptheodihnhtrnh.data.api.RetrofitClient
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 
 interface FeedApiService {
@@ -36,17 +34,7 @@ class FeedActivity : AppCompatActivity() {
     }
 
     private fun loadJourneys() {
-        val gson = GsonBuilder()
-            .setLenient()
-            .setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
-            .create()
-
-        val retrofit = Retrofit.Builder()
-            .baseUrl("http://192.168.1.155:3000/")
-            .addConverterFactory(GsonConverterFactory.create(gson))
-            .build()
-
-        val apiService = retrofit.create(FeedApiService::class.java)
+        val apiService = RetrofitClient.createService(FeedApiService::class.java)
         apiService.getAllJourneys().enqueue(object : Callback<List<JourneyData>> {
             override fun onResponse(call: Call<List<JourneyData>>, response: Response<List<JourneyData>>) {
                 if (response.isSuccessful) {

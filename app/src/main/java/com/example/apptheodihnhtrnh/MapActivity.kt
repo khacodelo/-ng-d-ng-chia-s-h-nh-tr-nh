@@ -21,6 +21,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.example.apptheodihnhtrnh.data.api.RetrofitClient
 import com.example.apptheodihnhtrnh.services.TrackingService
 import com.example.apptheodihnhtrnh.ui.auth.LoginActivity
 import com.example.apptheodihnhtrnh.ui.feed.FeedActivity
@@ -32,6 +33,7 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.*
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -39,11 +41,10 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.*
 import java.io.File
+import java.io.FileOutputStream
 import java.util.*
+import retrofit2.http.*
 
 // --- MODELS ---
 data class Point(val lat: Double, val lng: Double)
@@ -94,12 +95,14 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
     private var shouldStartAfterPermission = false
 
     private val selectImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
-        if (res.resultCode == RESULT_OK) res.data?.data?.let { uploadImage(it) }
+        if (res.resultCode == RESULT_OK) res.data?.data?.let { handleImageSelection(it) }
     }
 
     private val trackingReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            redrawTrackingPath()
+            val timeSec = intent?.getLongExtra("TIME_VALUE", TrackingService.timeInSeconds) ?: TrackingService.timeInSeconds
+            updateTimeUI(timeSec)
+            redrawFullRoute()
         }
     }
 
@@ -144,7 +147,13 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         }
 
         fabCheckpoint.setOnClickListener { showCheckpointDialog() }
-        updateButtonStates(TrackingService.isServiceRunning)
+        
+        if (TrackingService.isServiceRunning) {
+            updateButtonStates(true)
+            updateTimeUI(TrackingService.timeInSeconds)
+        } else {
+            updateTimeUI(0L)
+        }
     }
 
     private fun requestLocationPermissions() {
@@ -166,19 +175,21 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         fabCheckpoint.visibility = if (isRunning) View.VISIBLE else View.GONE
     }
 
-    private fun redrawTrackingPath() {
+    private fun updateTimeUI(seconds: Long) {
+        val hours = seconds / 3600
+        val minutes = (seconds % 3600) / 60
+        val secs = seconds % 60
+        runOnUiThread {
+            tvTime.text = String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, secs)
+        }
+    }
+
+    private fun redrawFullRoute() {
         if (!::mMap.isInitialized) return
-        
         val points = TrackingService.pathPoints.toList()
         if (points.isEmpty()) return
-
         polyline?.remove()
-        polyline = mMap.addPolyline(PolylineOptions()
-            .addAll(points)
-            .color(Color.BLUE)
-            .width(12f)
-            .geodesic(true))
-
+        polyline = mMap.addPolyline(PolylineOptions().addAll(points).color(Color.BLUE).width(12f).geodesic(true))
         val currentPos = points.last()
         lastLatLng = currentPos
         if (currentMarker == null) {
@@ -189,7 +200,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         } else {
             currentMarker?.position = currentPos
         }
-        
         calculateDistance(points)
         mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentPos, 17f))
     }
@@ -230,18 +240,45 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         b.show()
     }
 
-    private fun uploadImage(uri: Uri) {
-        val cursor = contentResolver.query(uri, arrayOf(MediaStore.Images.Media.DATA), null, null, null)
-        val path = if (cursor?.moveToFirst() == true) cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)) else ""
-        cursor?.close()
-        if (path.isEmpty()) return
-        val body = MultipartBody.Part.createFormData("image", File(path).name, File(path).asRequestBody("image/*".toMediaTypeOrNull()))
-        val retrofit = Retrofit.Builder().baseUrl("http://192.168.1.155:3000/").addConverterFactory(GsonConverterFactory.create()).build()
-        retrofit.create(JourneyApiService::class.java).uploadImage(body).enqueue(object : Callback<UploadResponse> {
+    private fun handleImageSelection(uri: Uri) {
+        try {
+            val inputStream = contentResolver.openInputStream(uri)
+            val file = File(cacheDir, "temp_image_${System.currentTimeMillis()}.jpg")
+            val outputStream = FileOutputStream(file)
+            inputStream?.copyTo(outputStream)
+            inputStream?.close()
+            outputStream.close()
+            uploadImage(file)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Lỗi khi xử lý ảnh: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun uploadImage(file: File) {
+        val body = MultipartBody.Part.createFormData("image", file.name, file.asRequestBody("image/*".toMediaTypeOrNull()))
+        val apiService = RetrofitClient.createService(JourneyApiService::class.java)
+        
+        Toast.makeText(this, "Đang tải ảnh lên...", Toast.LENGTH_SHORT).show()
+        
+        apiService.uploadImage(body).enqueue(object : Callback<UploadResponse> {
             override fun onResponse(call: Call<UploadResponse>, response: Response<UploadResponse>) {
-                if (response.isSuccessful) { tempImageUrl = response.body()?.imageUrl ?: ""; Toast.makeText(this@MapActivity, "Đã tải ảnh!", Toast.LENGTH_SHORT).show() }
+                if (response.isSuccessful) {
+                    tempImageUrl = response.body()?.imageUrl ?: ""
+                    Toast.makeText(this@MapActivity, "Đã tải ảnh thành công!", Toast.LENGTH_SHORT).show()
+                } else {
+                    val errorBody = response.errorBody()?.string()
+                    val errorMessage = try {
+                        val map = Gson().fromJson(errorBody, Map::class.java)
+                        map["message"]?.toString() ?: "Lỗi server"
+                    } catch (e: Exception) {
+                        "Lỗi server: ${response.code()}"
+                    }
+                    Toast.makeText(this@MapActivity, errorMessage, Toast.LENGTH_LONG).show()
+                }
             }
-            override fun onFailure(call: Call<UploadResponse>, t: Throwable) {}
+            override fun onFailure(call: Call<UploadResponse>, t: Throwable) {
+                Toast.makeText(this@MapActivity, "Lỗi kết nối: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
+            }
         })
     }
 
@@ -249,10 +286,11 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         val token = getSharedPreferences("APP_DATA", Context.MODE_PRIVATE).getString("TOKEN", "") ?: ""
         val points = TrackingService.pathPoints.map { Point(it.latitude, it.longitude) }
         if (token.isEmpty() || points.isEmpty()) return
-        val req = JourneyRequest(Date(), Date(), totalDistance, points, checkpointList)
-        val gson = GsonBuilder().setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").create()
-        val retrofit = Retrofit.Builder().baseUrl("http://192.168.1.155:3000/").addConverterFactory(GsonConverterFactory.create(gson)).build()
-        retrofit.create(JourneyApiService::class.java).saveJourney(token, req).enqueue(object : Callback<Void> {
+        val startTime = Date(System.currentTimeMillis() - (TrackingService.timeInSeconds * 1000))
+        val endTime = Date()
+        val req = JourneyRequest(startTime, endTime, totalDistance, points, checkpointList)
+        val apiService = RetrofitClient.createService(JourneyApiService::class.java)
+        apiService.saveJourney(token, req).enqueue(object : Callback<Void> {
             override fun onResponse(c: Call<Void>, r: Response<Void>) { if (r.isSuccessful) Toast.makeText(this@MapActivity, "Hành trình đã lưu!", Toast.LENGTH_SHORT).show() }
             override fun onFailure(c: Call<Void>, t: Throwable) {}
         })
@@ -272,6 +310,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         polyline = null
         currentMarker = null
         tvDistance.text = "0.00 km"
+        updateTimeUI(0L)
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
@@ -283,7 +322,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         if (!::mMap.isInitialized) return
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             mMap.isMyLocationEnabled = true
-            if (TrackingService.isServiceRunning) redrawTrackingPath()
+            if (TrackingService.isServiceRunning) {
+                redrawFullRoute()
+                updateTimeUI(TrackingService.timeInSeconds)
+            }
             fusedLocationClient.lastLocation.addOnSuccessListener { loc -> 
                 if (loc != null) mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 15f))
             }
@@ -295,7 +337,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
         val filter = IntentFilter("TRACKING_UPDATE")
         val flag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) ContextCompat.RECEIVER_NOT_EXPORTED else 0
         ContextCompat.registerReceiver(this, trackingReceiver, filter, flag)
-        if (TrackingService.isServiceRunning) redrawTrackingPath()
+        if (TrackingService.isServiceRunning) {
+            redrawFullRoute()
+            updateTimeUI(TrackingService.timeInSeconds)
+        }
     }
 
     override fun onPause() {

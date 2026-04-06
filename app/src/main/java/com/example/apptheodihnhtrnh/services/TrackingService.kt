@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
@@ -16,12 +17,15 @@ class TrackingService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
+    private val handler = Handler(Looper.getMainLooper())
+    private var timeRunnable: Runnable? = null
     
     companion object {
         const val CHANNEL_ID = "tracking_channel"
         const val NOTIFICATION_ID = 1
         var isServiceRunning = false
-        val pathPoints = mutableListOf<LatLng>() // Nguồn dữ liệu duy nhất
+        var timeInSeconds = 0L 
+        val pathPoints = mutableListOf<LatLng>()
     }
 
     override fun onCreate() {
@@ -34,8 +38,9 @@ class TrackingService : Service() {
         if (!isServiceRunning) {
             isServiceRunning = true
             pathPoints.clear()
+            timeInSeconds = 0L
             
-            val notification = createNotification("Đang theo dõi hành trình của bạn...")
+            val notification = createNotification("Đang ghi nhận hành trình và thời gian...")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
             } else {
@@ -43,13 +48,35 @@ class TrackingService : Service() {
             }
             
             startLocationUpdates()
+            startTimeCounter()
         }
         return START_STICKY
     }
 
+    // --- TÍNH THỜI GIAN HÀNH TRÌNH ---
+    private fun startTimeCounter() {
+        timeRunnable = object : Runnable {
+            override fun run() {
+                if (isServiceRunning) {
+                    timeInSeconds++
+                    val intent = Intent("TRACKING_UPDATE")
+                    intent.putExtra("TIME_VALUE", timeInSeconds)
+                    intent.setPackage(packageName)
+                    sendBroadcast(intent)
+                    handler.postDelayed(this, 1000L)
+                }
+            }
+        }
+        handler.postDelayed(timeRunnable!!, 1000L)
+    }
+
+    // --- TỐI ƯU GPS DƯỚI NỀN VÀ PIN ---
     private fun startLocationUpdates() {
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L)
+        // Cấu hình: Ưu tiên chính xác cao, cập nhật mỗi 3-5 giây, 
+        // và CHỈ cập nhật nếu di chuyển trên 2 mét để tiết kiệm pin.
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 4000L)
             .setMinUpdateIntervalMillis(2000L)
+            .setMinUpdateDistanceMeters(2f) 
             .build()
 
         locationCallback = object : LocationCallback() {
@@ -61,7 +88,6 @@ class TrackingService : Service() {
                     pathPoints.add(newPoint)
                 }
 
-                // Gửi thông báo đích danh cho app
                 val intent = Intent("TRACKING_UPDATE")
                 intent.setPackage(packageName) 
                 sendBroadcast(intent)
@@ -77,7 +103,7 @@ class TrackingService : Service() {
 
     private fun createNotification(content: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("App Theo Dõi Hành Trình")
+            .setContentTitle("Hành Trình Đang Được Ghi Lại")
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
@@ -99,6 +125,7 @@ class TrackingService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isServiceRunning = false
+        timeRunnable?.let { handler.removeCallbacks(it) }
         if (::locationCallback.isInitialized) {
             fusedLocationClient.removeLocationUpdates(locationCallback)
         }

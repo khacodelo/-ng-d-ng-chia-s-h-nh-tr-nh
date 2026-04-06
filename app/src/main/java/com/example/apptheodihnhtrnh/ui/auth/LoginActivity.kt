@@ -3,7 +3,6 @@ package com.example.apptheodihnhtrnh.ui.auth
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -11,46 +10,26 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.apptheodihnhtrnh.MapActivity
 import com.example.apptheodihnhtrnh.R
+import com.example.apptheodihnhtrnh.data.api.AuthApi
+import com.example.apptheodihnhtrnh.data.api.AuthRequest
+import com.example.apptheodihnhtrnh.data.api.AuthResponse
+import com.example.apptheodihnhtrnh.data.api.RetrofitClient
 import com.google.gson.Gson
-import com.google.gson.annotations.SerializedName
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.Body
-import retrofit2.http.POST
-
-// --- MODELS ---
-data class LoginRequest(
-    @SerializedName("email") val email: String,
-    @SerializedName("password") val password: String
-)
-
-data class LoginResponse(
-    @SerializedName("token") val token: String?,
-    @SerializedName("message") val message: String?
-)
-
-// --- API SERVICE ---
-interface AuthApiService {
-    @POST("auth/login")
-    fun login(@Body request: LoginRequest): Call<LoginResponse>
-}
 
 class LoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // --- BƯỚC 1: KIỂM TRA ĐĂNG NHẬP TỰ ĐỘNG ---
         val sharedPref = getSharedPreferences("APP_DATA", Context.MODE_PRIVATE)
         val savedToken = sharedPref.getString("TOKEN", null)
         
         if (savedToken != null) {
-            // Nếu đã có token, nhảy thẳng vào MapActivity
             startActivity(Intent(this, MapActivity::class.java))
-            finish() // Đóng LoginActivity để không quay lại được bằng nút Back
+            finish()
             return
         }
 
@@ -61,13 +40,6 @@ class LoginActivity : AppCompatActivity() {
         val btnLogin = findViewById<Button>(R.id.btnLogin)
         val tvGoToRegister = findViewById<TextView>(R.id.tvGoToRegister)
 
-        val retrofit = Retrofit.Builder()
-            .baseUrl("http://192.168.1.155:3000/")
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-
-        val apiService = retrofit.create(AuthApiService::class.java)
-
         btnLogin.setOnClickListener {
             val email = emailEdit.text.toString().trim()
             val password = passwordEdit.text.toString().trim()
@@ -77,15 +49,13 @@ class LoginActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val loginRequest = LoginRequest(email, password)
-            apiService.login(loginRequest).enqueue(object : Callback<LoginResponse> {
-                override fun onResponse(call: Call<LoginResponse>, response: Response<LoginResponse>) {
+            val loginRequest = AuthRequest(email, password)
+            RetrofitClient.authApi.login(loginRequest).enqueue(object : Callback<AuthResponse> {
+                override fun onResponse(call: Call<AuthResponse>, response: Response<AuthResponse>) {
                     if (response.isSuccessful) {
                         val body = response.body()
                         if (body?.token != null) {
-                            // LƯU TOKEN
                             sharedPref.edit().putString("TOKEN", body.token).apply()
-
                             Toast.makeText(this@LoginActivity, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show()
                             startActivity(Intent(this@LoginActivity, MapActivity::class.java))
                             finish()
@@ -94,17 +64,11 @@ class LoginActivity : AppCompatActivity() {
                         }
                     } else {
                         val errorBody = response.errorBody()?.string()
-                        val errorMessage = try {
-                            val errorResponse = Gson().fromJson(errorBody, LoginResponse::class.java)
-                            errorResponse.message ?: "Sai email hoặc mật khẩu"
-                        } catch (e: Exception) {
-                            "Lỗi hệ thống: ${response.code()}"
-                        }
-                        Toast.makeText(this@LoginActivity, "Đăng nhập thất bại: $errorMessage", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@LoginActivity, "Đăng nhập thất bại: $errorBody", Toast.LENGTH_LONG).show()
                     }
                 }
 
-                override fun onFailure(call: Call<LoginResponse>, t: Throwable) {
+                override fun onFailure(call: Call<AuthResponse>, t: Throwable) {
                     Toast.makeText(this@LoginActivity, "Lỗi kết nối Server: ${t.localizedMessage}", Toast.LENGTH_LONG).show()
                 }
             })

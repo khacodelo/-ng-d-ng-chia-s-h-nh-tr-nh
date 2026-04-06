@@ -1,3 +1,5 @@
+package com.example.apptheodihnhtrnh.data.api
+
 import retrofit2.Call
 import retrofit2.http.Body
 import retrofit2.http.POST
@@ -12,7 +14,6 @@ data class AuthResponse(
 )
 
 interface AuthApi {
-
     @POST("auth/register")
     fun register(@Body request: AuthRequest): Call<Void>
 
